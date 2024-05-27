@@ -299,6 +299,8 @@ c     adopted linear shape functions
 c     xjacm array structure
 c     columns are global x y z coordinates
 c     lines are s t r
+cfix matrix multiplication,but the column and line is mixed.
+cfix calling a function to compute the matmul is more suitable.
          xjacm(1,1)= deriv(1,1)*SVAR(1,1)+deriv(1,2)*SVAR(2,1)
      1 +deriv(1,3)*SVAR(3,1)+deriv(1,4)*SVAR(4,1) 
      2 +deriv(1,5)*SVAR(5,1)+deriv(1,6)*SVAR(6,1) 
