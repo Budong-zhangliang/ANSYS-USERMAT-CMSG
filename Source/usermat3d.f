@@ -465,10 +465,10 @@ c fix calling a function to compute the matmul is more suitable.
      &        - b5*SVAR(5,9) - b6*SVAR(6,9) 
      &        - b7*SVAR(7,9) - b8*SVAR(8,9)    
          !dn133
-         eta(9)=a1*SVAR(1,8) + a2*SVAR(2,8)
-     &        + a3*SVAR(3,8) + a4*SVAR(4,8)
-     &        + a5*SVAR(5,8) + a6*SVAR(6,8)
-     &        + a7*SVAR(7,8) + a8*SVAR(7,8)
+         eta(9)=a1*SVAR(1,6) + a2*SVAR(2,6)
+     &        + a3*SVAR(3,6) + a4*SVAR(4,6)
+     &        + a5*SVAR(5,6) + a6*SVAR(6,6)
+     &        + a7*SVAR(7,6) + a8*SVAR(7,6)
          !dn211
         eta(10)=b1*SVAR(1,4) + b2*SVAR(2,4) + b3*SVAR(3,4)
      1        + b4*SVAR(4,4) + b5*SVAR(5,4) + b6*SVAR(6,4) 
