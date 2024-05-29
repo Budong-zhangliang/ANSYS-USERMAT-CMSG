@@ -11,6 +11,7 @@
      &                   var1, var2, var3, var4, var5,
      &                   var6, var7, var8)
 c      
+CFIX SOLID186单元对应abaqus中的C3D8单元？
 c     Custom user material subroutine for Conventional Gradient Plasticity Model.      
 c     The procedure is created for SOLID186 element with Keyopt(2)=0.
 c     SOLID186 have a 8 integration points. 
@@ -21,7 +22,7 @@ c
 c
       EXTERNAL         kdevia, keff,  ELPREV, REVERSE
       EXTERNAL         GET_ELMDATA, PUT_ELMDATA
-              INTEGER 
+      INTEGER 
      &                 matId, noel,
      &                 npt, Layer, jstep, kspt,
      &                 kdstep,kinc,keycut,
@@ -40,13 +41,17 @@ c
 c
 c     Integration Point Locations in local element CS
       DOUBLE PRECISION  s, t, r
+	  
 c     Reserved by ANSYS variables
       DOUBLE PRECISION var0, var1, var2, var3, var4, var5,
      &                 var6, var7, var8
+	 
 c     state variables array for all integration points
       DOUBLE PRECISION SVAR(8,nstatv), SVARtmp(nstatv)
+	  
 c     derivatives of shape functions at integration points
       DOUBLE PRECISION deriv(3,8)
+	  
 c     auxiliary parameters for derivatives
       DOUBLE PRECISION P007, P057, P108
       PARAMETER       (P007       = 0.07216878364870325,
@@ -147,7 +152,7 @@ c                                         0 - no bisect/cut
 c                                         1 - bisect/cut 
 c                                         (factor will be determined by solution control)
 c      ddsdde   (dp,ar(ncomp,ncomp),o)    material jacobian matrix
-c      tsstif   (dp,ar(2),o)              transverse shear stiffness
+c      tsstif   (dp,ar(2),o)              transverse shear stiffness (横向剪切刚度)
 c                                         tsstif(1) - Gxz
 c                                         tsstif(2) - Gyz
 c                                         tsstif(1) is also used to calculate hourglass
@@ -171,10 +176,10 @@ c           dsdePl    |  1211   1222   1233   1212   1223   1213 |
 c           dsdePl    |  2311   2322   2333   2312   2323   2313 |
 c           dsdePl    |  1311   1322   1333   1312   1323   1313 |    
 c
-c     Structure of the ustatev() array
+cfix  Structure of the nstatev() array
 c     1-3 Integration point coordinates in global system
-c     4-9 derivatives x,y,z,xy,yz,zx
-c     10  gradient
+c     4-9 derivatives x,y,z,xy,yz,zx	！should be strain increment.
+c     10  gradient 	！should be strain gradient increment.
 c
 c     obtain the gradient values from all integration points
       SVAR=0.d0
@@ -184,30 +189,39 @@ c     obtain the gradient values from all integration points
               SVAR(i,j)=SVARtmp(j)
          enddo
       enddo
+	  
 c     elastic strains
       eelas=stran - epsPl
+
+CFIXA 这部分是材料参数，不用修改。
 c *** Material properties      
 c     Young modulus
       E=props(1)
 c     Poisson ratio
       xnue=props(2)
-c     Yeld stress
+c     Yield stress
       syield=props(3)
-c     characteristic length
+c     characteristic length   !提前设定的?
       ele=props(4)
 c     strain hardening exponent (0 < ene < 1)
       ene=props(5)
 c     flag, statistically conserved dislocations. See Arsenlis and Parks (1998)
 c     in most cases is eq to 1
       kflag=props(6)
-       
+
+c     Bulk modulus K=E/3(1-2μ)
       ebulk3=E/(1.d0-2.d0*xnue)
-c     Bulk modulus
-      xk=ebulk3/3.d0     
+      xk=ebulk3/3.d0
+
+cfix  Shear modulus           
       eg2=E/(1.d0+xnue)
       eg=eg2/2.d0
+      
+cfix  Lame constant   ! lamda=E*xnue*(1-2*xnue)*(1+xnue).
       elam=(ebulk3-eg2)/3.d0 
+CFIXA
 
+CFIXB 均质、各向同性材料的弹性刚度矩阵。      
 c *** calculate elastic stiffness matrix (3d)
       ddsdde=0.d0   
        do k1=1,3
@@ -218,20 +232,24 @@ c *** calculate elastic stiffness matrix (3d)
        enddo
        ddsdde(4,4)=eg 
        ddsdde(5,5)=eg 
-       ddsdde(6,6)=eg 
+       ddsdde(6,6)=eg
+CFIXB
+ 	   
 c     it's needed for calculation of hourglass stiffness
+CFIX 沙漏刚度?貌似只是接口中需要定义，后面没有使用到。
       tsstif(1)=eg 
-      
+
+
       if (all(dstran .eq. 0)) then 
            goto 100
-          else
+      else
 c *** gradients for all integration points
               
 c     integration point coordinates in the isoparametric space              
           if (npt.eq.1) then   
-             do k1=1,8  
+             do k1=1,8  !这个循环是什么意思？
                 if (k1==1) then
-                    s=-0.577350269189626
+                    s=-0.577350269189626		! =1/sqrt(3)
                     t=-0.577350269189626
                     r=-0.577350269189626
                 elseif (k1==2) then 
@@ -263,7 +281,10 @@ c     integration point coordinates in the isoparametric space
                     t=0.577350269189626
                     r=0.577350269189626
                 end if
-c     adopted linear shape functions     
+c     adopted linear shape functions 
+CFIX  8个积分点上，形函数导数 N1/s,N1/t,N1/r。
+CFIX  每次循环时，这里的s, t, r, 以及deriv都会变！
+
          deriv(1,1)=-P007*(P057*r - 1)*(P057*t - 1)
          deriv(2,1)=-P057*(P057*r - 1)*(P007*s - P108)
          deriv(3,1)=-P057*(P057*t - 1)*(P007*s - P108)     
@@ -299,61 +320,73 @@ c     adopted linear shape functions
 c     xjacm array structure
 c     columns are global x y z coordinates
 c     lines are s t r
-c fix matrix multiplication,but the column and line is mixed.
-c fix calling a function to compute the matmul is more suitable.
+CFIXC Jacobian矩阵，等参单元投影，联系等参单元的局部坐标、全局坐标。
+CFIX  原始的源代码有问题，将Jacobian矩阵的行列弄错了！！！
+CFIX  这里对Jacobian矩阵做了修改！按照
+CFIX  xjacm(3,3) = deriv(3,8)*SVAR(8,3). 
+CFIX  xjacm(1,1) = sum(dNi/ds*xi,1-8), 
+CFIX  xjacm(1,2) = sum(dNi/ds*xi,1-8), 
+
          xjacm(1,1)= deriv(1,1)*SVAR(1,1)+deriv(1,2)*SVAR(2,1)
      1 +deriv(1,3)*SVAR(3,1)+deriv(1,4)*SVAR(4,1) 
      2 +deriv(1,5)*SVAR(5,1)+deriv(1,6)*SVAR(6,1) 
      3 +deriv(1,7)*SVAR(7,1)+deriv(1,8)*SVAR(8,1) 
-         
-           xjacm(2,1)= deriv(2,1)*SVAR(1,1)+deriv(2,2)*SVAR(2,1)
+ 
+CFIX  xjacm(1,2)——>xjacm(2,1)  
+         xjacm(2,1)= deriv(2,1)*SVAR(1,1)+deriv(2,2)*SVAR(2,1)
      1 +deriv(2,3)*SVAR(3,1)+deriv(2,4)*SVAR(4,1) 
      2 +deriv(2,5)*SVAR(5,1)+deriv(2,6)*SVAR(6,1) 
      3 +deriv(2,7)*SVAR(7,1)+deriv(2,8)*SVAR(8,1) 
-           
-           xjacm(3,1)= deriv(3,1)*SVAR(1,1)+deriv(3,2)*SVAR(2,1)
+
+CFIX  xjacm(1,3)——>xjacm(3,1)          
+         xjacm(3,1)= deriv(3,1)*SVAR(1,1)+deriv(3,2)*SVAR(2,1)
      1 +deriv(3,3)*SVAR(3,1)+deriv(3,4)*SVAR(4,1) 
      2 +deriv(3,5)*SVAR(5,1)+deriv(3,6)*SVAR(6,1) 
      3 +deriv(3,7)*SVAR(7,1)+deriv(3,8)*SVAR(8,1) 
-           
-          xjacm(1,2)= deriv(1,1)*SVAR(1,2)+deriv(1,2)*SVAR(2,2)
+
+CFIX  xjacm(2,1)——>xjacm(1,2)            
+         xjacm(1,2)= deriv(1,1)*SVAR(1,2)+deriv(1,2)*SVAR(2,2)
      1 +deriv(1,3)*SVAR(3,2)+deriv(1,4)*SVAR(4,2) 
      2 +deriv(1,5)*SVAR(5,2)+deriv(1,6)*SVAR(6,2) 
      3 +deriv(1,7)*SVAR(7,2)+deriv(1,8)*SVAR(8,2) 
           
-          xjacm(2,2)= deriv(2,1)*SVAR(1,2)+deriv(2,2)*SVAR(2,2)
+         xjacm(2,2)= deriv(2,1)*SVAR(1,2)+deriv(2,2)*SVAR(2,2)
      1 +deriv(2,3)*SVAR(3,2)+deriv(2,4)*SVAR(4,2) 
      2 +deriv(2,5)*SVAR(5,2)+deriv(2,6)*SVAR(6,2) 
      3 +deriv(2,7)*SVAR(7,2)+deriv(2,8)*SVAR(8,2) 
-          
-          xjacm(3,2)= deriv(3,1)*SVAR(1,2)+deriv(3,2)*SVAR(2,2)
+
+CFIX  xjacm(2,3)——>xjacm(3,2)           
+         xjacm(3,2)= deriv(3,1)*SVAR(1,2)+deriv(3,2)*SVAR(2,2)
      1 +deriv(3,3)*SVAR(3,2)+deriv(3,4)*SVAR(4,2) 
      2 +deriv(3,5)*SVAR(5,2)+deriv(3,6)*SVAR(6,2) 
      3 +deriv(3,7)*SVAR(7,2)+deriv(3,8)*SVAR(8,2) 
           
-          
-          xjacm(1,3)= deriv(1,1)*SVAR(1,3)+deriv(1,2)*SVAR(2,3)
+CFIX  xjacm(3,1)——>xjacm(1,3)           
+         xjacm(1,3)= deriv(1,1)*SVAR(1,3)+deriv(1,2)*SVAR(2,3)
      1 +deriv(1,3)*SVAR(3,3)+deriv(1,4)*SVAR(4,3) 
      2 +deriv(1,5)*SVAR(5,3)+deriv(1,6)*SVAR(6,3) 
      3 +deriv(1,7)*SVAR(7,3)+deriv(1,8)*SVAR(8,3) 
-          
-          xjacm(2,3)= deriv(2,1)*SVAR(1,3)+deriv(2,2)*SVAR(2,3)
+
+CFIX  xjacm(3,2)——>xjacm(2,3)           
+         xjacm(2,3)= deriv(2,1)*SVAR(1,3)+deriv(2,2)*SVAR(2,3)
      1 +deriv(2,3)*SVAR(3,3)+deriv(2,4)*SVAR(4,3) 
      2 +deriv(2,5)*SVAR(5,3)+deriv(2,6)*SVAR(6,3) 
      3 +deriv(2,7)*SVAR(7,3)+deriv(2,8)*SVAR(8,3) 
           
-          xjacm(3,3)= deriv(3,1)*SVAR(1,3)+deriv(3,2)*SVAR(2,3)
+         xjacm(3,3)= deriv(3,1)*SVAR(1,3)+deriv(3,2)*SVAR(2,3)
      1 +deriv(3,3)*SVAR(3,3)+deriv(3,4)*SVAR(4,3) 
      2 +deriv(3,5)*SVAR(5,3)+deriv(3,6)*SVAR(6,3) 
      3 +deriv(3,7)*SVAR(7,3)+deriv(3,8)*SVAR(8,3) 
+CFIXC
           
-        
+C 等参单元Jacobian矩阵求逆。        
       if (all(xjacm .eq. 0)) then 
           xjaci=0
       else
           CALL REVERSE(3, xjacm, xjaci) 
       end if
-      
+
+CFIX 在全局坐标中的形函数梯度，dN/dx，dN/dy，dN/dz。      
       !dN/dx
          a1=xjaci(1,1)*deriv(1,1)+xjaci(1,2)*deriv(2,1)
      1                            + xjaci(1,3)*deriv(3,1) 
@@ -406,7 +439,8 @@ c fix calling a function to compute the matmul is more suitable.
      1                            + xjaci(3,3)*deriv(3,7)          
          c8=xjaci(3,1)*deriv(1,8)+xjaci(3,2)*deriv(2,8)
      1                            + xjaci(3,3)*deriv(3,8)  
-         
+
+CFIX 应变梯度！         
          !dn111
          eta(1)=a1*SVAR(1,4) + a2*SVAR(2,4) + a3*SVAR(3,4)
      1        + a4*SVAR(4,4) + a5*SVAR(5,4) + a6*SVAR(6,4) 
@@ -437,17 +471,16 @@ c fix calling a function to compute the matmul is more suitable.
          eta(5)=a1*SVAR(1,5) + a2*SVAR(2,5) + a3*SVAR(3,5)
      1        + a4*SVAR(4,5) + a5*SVAR(5,5) + a6*SVAR(6,5) 
      2        + a7*SVAR(7,5) + a8*SVAR(8,5) 
-         !dn123
+         !dn123		!调整 c的格式. 
          eta(6)=b1*SVAR(1,9) + b2*SVAR(2,9) + b3*SVAR(3,9)
      1        + b4*SVAR(4,9) + b5*SVAR(5,9) + b6*SVAR(6,9) 
      2        + b7*SVAR(7,9) + b8*SVAR(8,9) 
      3        + a1*SVAR(1,8) + a2*SVAR(2,8) + a3*SVAR(3,8)
      4        + a4*SVAR(4,8) + a5*SVAR(5,8) + a6*SVAR(6,8) 
      5        + a7*SVAR(7,8) + a8*SVAR(8,8) 
-     4        - c1*SVAR(1,7) - c2*SVAR(2,7) 
-     5        - c3*SVAR(3,7) - c4*SVAR(4,7)
-     6        - c5*SVAR(5,7) - c6*SVAR(6,7) 
-     7        - c7*SVAR(7,7) - c8*SVAR(8,7)
+     6        - c1*SVAR(1,7) - c2*SVAR(2,7) - c3*SVAR(3,7) 
+     7        - c4*SVAR(4,7) - c5*SVAR(5,7) - c6*SVAR(6,7) 
+     8        - c7*SVAR(7,7) - c8*SVAR(8,7)
          !dn131
          eta(7)=c1*SVAR(1,4) + c2*SVAR(2,4) + c3*SVAR(3,4)
      1        + c4*SVAR(4,4) + c5*SVAR(5,4) + c6*SVAR(6,4) 
@@ -456,19 +489,16 @@ c fix calling a function to compute the matmul is more suitable.
          eta(8)=c1*SVAR(1,7) + c2*SVAR(2,7) + c3*SVAR(3,7)
      &        + c4*SVAR(4,7) + c5*SVAR(5,7) + c6*SVAR(6,7) 
      &        + c7*SVAR(7,7) + c8*SVAR(8,7)
-     &        + a1*SVAR(1,8) + a2*SVAR(2,8)
-     &        + a3*SVAR(3,8) + a4*SVAR(4,8)
-     &        + a5*SVAR(5,8) + a6*SVAR(6,8)
+     &        + a1*SVAR(1,8) + a2*SVAR(2,8) + a3*SVAR(3,8)
+     &        + a4*SVAR(4,8) + a5*SVAR(5,8) + a6*SVAR(6,8)
      &        + a7*SVAR(7,8) + a8*SVAR(8,8)
-     &        - b1*SVAR(1,9) - b2*SVAR(2,9) 
-     &        - b3*SVAR(3,9) - b4*SVAR(4,9)
-     &        - b5*SVAR(5,9) - b6*SVAR(6,9) 
-     &        - b7*SVAR(7,9) - b8*SVAR(8,9)    
-         !dn133
-         eta(9)=a1*SVAR(1,6) + a2*SVAR(2,6)
-     &        + a3*SVAR(3,6) + a4*SVAR(4,6)
-     &        + a5*SVAR(5,6) + a6*SVAR(6,6)
-     &        + a7*SVAR(7,6) + a8*SVAR(7,6)
+     &        - b1*SVAR(1,9) - b2*SVAR(2,9) - b3*SVAR(3,9)
+     &        - b4*SVAR(4,9) - b5*SVAR(5,9) - b6*SVAR(6,9) 
+     &        - b7*SVAR(7,9) - b8*SVAR(8,9) 
+         !dn133		!CFIX 没有最后两项，a7、a8 ??? 修改后加上了。
+         eta(9)=a1*SVAR(1,6) + a2*SVAR(2,6) + a3*SVAR(3,6)
+     &        + a4*SVAR(4,6) + a5*SVAR(5,6) + a6*SVAR(6,6)
+     &        + a7*SVAR(7,6) + a8*SVAR(8,6)
          !dn211
         eta(10)=b1*SVAR(1,4) + b2*SVAR(2,4) + b3*SVAR(3,4)
      1        + b4*SVAR(4,4) + b5*SVAR(5,4) + b6*SVAR(6,4) 
@@ -550,7 +580,7 @@ c fix calling a function to compute the matmul is more suitable.
      &        + a5*SVAR(5,6) + a6*SVAR(6,6)
      &        + a7*SVAR(7,6) + a8*SVAR(8,6)
         !dn321
-         eta(22)=b1*SVAR(1,9) + b2*SVAR(2,9) + b3*SVAR(3,9)
+        eta(22)=b1*SVAR(1,9) + b2*SVAR(2,9) + b3*SVAR(3,9)
      &        + b4*SVAR(4,9) + b5*SVAR(5,9) + b6*SVAR(6,9) 
      &        + b7*SVAR(7,9) + b8*SVAR(8,9)
      &        + c1*SVAR(1,7) + c2*SVAR(2,7) + c3*SVAR(3,7)
@@ -591,7 +621,7 @@ c fix calling a function to compute the matmul is more suitable.
      &        + c5*SVAR(5,6) + c6*SVAR(6,6)
      &        + c7*SVAR(7,6) + c8*SVAR(8,6)
          
-         
+CFIX 应变梯度增量的模！           
         etat= eta(1)**2  + eta(2)**2  + eta(3)**2
      &      + eta(4)**2  + eta(5)**2  + eta(6)**2
      &      + eta(7)**2  + eta(8)**2  + eta(9)**2
@@ -602,12 +632,14 @@ c fix calling a function to compute the matmul is more suitable.
      &      + eta(22)**2 + eta(23)**2 + eta(24)**2
      &      + eta(25)**2 + eta(26)**2 + eta(27)**2
         
-        !
-        
+
+CFIX 应变梯度！
+CFIX 前面的这么多操作，就是为了求这个值。
         SVAR(k1,10) = SVAR(k1,10) + sqrt((1.d0/4.d0)*(etat))
     
         
           enddo
+		  
 c     Save obtained gradients
           do k1=1,8
             do k2=1,nstatv
@@ -617,13 +649,15 @@ c     Save obtained gradients
           enddo
           
        endif
-                            
+
+CFIX  xiden为单位矩阵。                            
        xiden=0.d0
        do i=1,3
         xiden(i,i)=1.d0   
-       enddo    
+       enddo
+	   
        stra=0.d0   
-c     Phisical strains
+c     Phisical strains		CFIX  弹性应变。
        do i=1,3
         stra(i,i)=eelas(i)
        enddo
@@ -633,10 +667,13 @@ c     Phisical strains
        stra(3,1)=eelas(6)/2.d0
        stra(2,3)=eelas(5)/2.d0
        stra(3,2)=eelas(5)/2.d0
-c     deviatoric elastic strains 
+c     deviatoric elastic strains
+CFIX  偏弹性应变？ 
        call kdevia(stra,xiden,strad)
+	   
        dstra=0.d0
 c     elastic strains increment
+CFIX  弹性应变增量。
        do i=1,3
         dstra(i,i)=dstran(i)
        enddo
@@ -649,18 +686,21 @@ c     elastic strains increment
 c     deviatoric elastic strains increment
        call kdevia(dstra,xiden,dstrad)
        strain=strad+dstrad
+	   
 c     equivalent strain
        call keff(strain,def)
 c     equivalent strain increment
        call keff(dstrad,defi)
-c *** Plastic      
+
+c *** Plastic     
 c     flow stress
       sigmaf=syield*((E/syield)**ene)*sqrt((epseq+(syield/E))**(2*ene)
      1 + ele*SVAR(npt,10))
 c          
        sigmae=syield
        h=0.d0
-       do kewton=1, newton 
+c	CFIX 目的？	 
+       do kewton=1, newton 	!CFIX newton=1000
         rhs=3.d0*eg*(def-defi*((sigmae/sigmaf)**20))-sigmae
         sigmae=sigmae+rhs/(3.d0*eg*h+1.d0)
         h=20.d0*defi*((sigmae/sigmaf)**19)*(1.d0/sigmaf)
@@ -670,11 +710,12 @@ c       sigmae=0
 c       write(7,19) newton
 c   19 format(//,30x,'***warning - plasticity algorithm did not ',
 c     1 'converged after',i3, 'iterations')
- 20    continue   
+20     continue   
           
        deqpl=def-sigmae/(3.d0*eg)
        epseq=epseq+deqpl
-c
+
+c	CFIX 这部分有些混乱？
        dstr=strain*2.d0*eg/(1.d0+deqpl*3.d0*eg/sigmae)
 c
        do i=1,3
@@ -707,7 +748,8 @@ c
        stress(6)=dstre(6)
 c       
        statev(4:9)= dpstran
-c ***  material jacobian matrix  
+c ***  material jacobian matrix
+CFIX  需要返回雅可比矩阵。  
        q=(2.d0/3.d0)*(sigmae/def)
        r=((h-(deqpl/sigmae))/(def*sigmae))*(3.d0*eg)/(1.d0+3.d0*eg*h)
        ddsdde=0
@@ -758,11 +800,14 @@ c     bcc
        td=gnd+ssd
        
        
-c     gradient 
+c     gradient !CFIX! the average strain gradient. 
        statev(10)= SVAR(npt,10) 
 c     to plot ssd in m^-2 
        statev(11)=(1000000.0d0)*ssd
 c     to plot gnd in m^-2 
+CFIX  why not *10^6?
+CFIX  the unit of eta is 1/mm,
+CFIX  the unit of 
        statev(12)=(1000.0d0)*gnd
 c     total dislocations
        statev(13)=td 
