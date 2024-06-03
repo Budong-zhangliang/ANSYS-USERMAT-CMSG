@@ -70,9 +70,11 @@ c     matrices for Jacobian determination
      &  b1, b2, b3, b4, b5, b6, b7, b8,
      &  c1, c2, c3, c4, c5, c6, c7, c8, 
      &  eta(27)
+
+CFIX strad(3,3) is changed to 'estrad(3,3)'. 表示弹性应变偏张量。
       DOUBLE PRECISION xiden(3,3),dpstran(ntens),stra(3,3),
      1 destran(ntens),dstr(3,3),
-     2 dpstrn(3,3),strad(3,3),dstre(6),
+     2 dpstrn(3,3),estrad(3,3),dstre(6),
      3 dstra(3,3),dstrad(3,3),strain(3,3)
       
       DOUBLE PRECISION E, xnue, ebulk3, xk,eg2, eg, elam,
@@ -655,9 +657,12 @@ CFIX  xiden为单位矩阵。
        do i=1,3
         xiden(i,i)=1.d0   
        enddo
-	   
+
+CFIX  变量命名没有辨识度！！！需要重新梳理。	   
        stra=0.d0   
-c     Phisical strains		CFIX  弹性应变。
+c     Phisical strains
+CFIX  stra:  弹性应变的张量表示。
+CFIX  eelas: 弹性应变的矢量表示。
        do i=1,3
         stra(i,i)=eelas(i)
        enddo
@@ -668,12 +673,14 @@ c     Phisical strains		CFIX  弹性应变。
        stra(2,3)=eelas(5)/2.d0
        stra(3,2)=eelas(5)/2.d0
 c     deviatoric elastic strains
-CFIX  偏弹性应变？ 
-       call kdevia(stra,xiden,strad)
+CFIX  estrad：弹性应变的偏张量表示。 
+       call kdevia(stra,xiden,estrad)
 	   
        dstra=0.d0
 c     elastic strains increment
-CFIX  弹性应变增量。
+CFIX  dstra: 总应变增量的张量表示。
+CFIX  dstran: 总应变增量的矢量表示？
+CFIX  dstran应该是总的应变增量？这里有错误？！没有错误，看论文。
        do i=1,3
         dstra(i,i)=dstran(i)
        enddo
@@ -683,13 +690,21 @@ CFIX  弹性应变增量。
        dstra(3,1)=dstran(6)/2.d0
        dstra(3,2)=dstran(5)/2.d0
        dstra(2,3)=dstran(5)/2.d0
+	   
 c     deviatoric elastic strains increment
+CFIX  dstrad：总应变增量的偏张量表示。 
+CFIX  strain：什么应变？自定义的应变偏张量，看以下的论文。
+CFIX  ABAQUS implementation of the conventional
+CFIX  mechanism-based strain gradient plasticity theory. 
        call kdevia(dstra,xiden,dstrad)
-       strain=strad+dstrad
+       strain=estrad+dstrad
 	   
 c     equivalent strain
+CFIX  def:自定义应变偏张量strain对应的等效应变。def=sqrt(2/3*strain*strain). 
        call keff(strain,def)
+	   
 c     equivalent strain increment
+CFIX  总应变增量的等效应变。等效应变增量（标量）。
        call keff(dstrad,defi)
 
 c *** Plastic     
@@ -700,8 +715,8 @@ c
        sigmae=syield
        h=0.d0
 c	CFIX 目的？	 
-       do kewton=1, newton 	!CFIX newton=1000
-        rhs=3.d0*eg*(def-defi*((sigmae/sigmaf)**20))-sigmae
+       do kewton=1, newton 		!CFIX newton=1000
+        rhs=3.d0*eg*(def-defi*((sigmae/sigmaf)**20))-sigmae	!残差。
         sigmae=sigmae+rhs/(3.d0*eg*h+1.d0)
         h=20.d0*defi*((sigmae/sigmaf)**19)*(1.d0/sigmaf)
         if(dabs(rhs).lt.toler) goto 20
@@ -712,52 +727,59 @@ c   19 format(//,30x,'***warning - plasticity algorithm did not ',
 c     1 'converged after',i3, 'iterations')
 20     continue   
           
-       deqpl=def-sigmae/(3.d0*eg)
-       epseq=epseq+deqpl
+       deqpl=def-sigmae/(3.d0*eg)	!CFIX 等效塑性应变增量？
+       epseq=epseq+deqpl			!CFIX 等效塑性应变？
 
-c	CFIX 这部分有些混乱？
+c	
+CFIX   这部分有些混乱？各个变量的含义？ 
+CFIX   dstr是应力偏张量增量，公式（20）。
        dstr=strain*2.d0*eg/(1.d0+deqpl*3.d0*eg/sigmae)
 c
        do i=1,3
-        dstre(i)=dstr(i,i)
+        dstre(i)=dstr(i,i)		!CFIX dstre是应力偏张量，矢量增量？
        enddo
        dstre(4)=dstr(1,2)
        dstre(5)=dstr(2,3)
        dstre(6)=dstr(3,1)
-c
+	   
+c	dpstrn变量？塑性应变增量张量，公式（15）。
        dpstrn=dstr*(3.d0*deqpl)/(2.d0*sigmae)
 c
        do i=1,3             
-        dpstran(i)=dpstrn(i,i)
+        dpstran(i)=dpstrn(i,i)		!CFIX dpstran是塑性应变增量矢量？
        enddo
        dpstran(4)=2.d0*dpstrn(1,2)
        dpstran(5)=2.d0*dpstrn(2,3)
        dpstran(6)=2.d0*dpstrn(3,1)
 c       
-       destran=dstran-dpstran
-       epsPl=epsPl+dpstran
-       eelas=eelas+destran
-       ep=eelas(1)+eelas(2)+eelas(3)
-       stran=eelas+epsPl
+CFIX  
+       destran=dstran-dpstran		!CFIX 弹性应变增量。
+       epsPl=epsPl+dpstran		    !CFIX 更新的塑性应变。
+       eelas=eelas+destran		    !CFIX 更新的弹性应变。
+       ep=eelas(1)+eelas(2)+eelas(3) !CFIX 更新的体积弹性应变。
+       stran=eelas+epsPl            !CFIX 更新的总应变。
 c      
        do j=1,3
-        stress(j)=dstre(j)+xk*ep
+        stress(j)=dstre(j)+xk*ep	! xk: Bulk modulus, 体积模量。后者就是静水压力。
        enddo
-       stress(4)=dstre(4)
+       stress(4)=dstre(4)		!应力成分，应力偏张量相同位置的成分。
        stress(5)=dstre(5)
        stress(6)=dstre(6)
 c       
-       statev(4:9)= dpstran
-c ***  material jacobian matrix
-CFIX  需要返回雅可比矩阵。  
+       statev(4:9)= dpstran		! 为什么输出塑性应变增量？为了计算应变梯度。
+	   
+c ***  material jacobian matrix。
+CFIX  需要返回雅可比矩阵。 
        q=(2.d0/3.d0)*(sigmae/def)
        r=((h-(deqpl/sigmae))/(def*sigmae))*(3.d0*eg)/(1.d0+3.d0*eg*h)
        ddsdde=0
+	   
        do i=1,3
         do j=1,3
           ddsdde(i,j)=q*xiden(i,j)+(xk-q*1.d0/3.d0)-r*dstre(i)*dstre(j)
         end do
        end do
+	   
        do k=1,3
         ddsdde(k,4) = -r*dstre(k)*dstre(4)
         ddsdde(4,k) = ddsdde(k,4)
@@ -770,19 +792,23 @@ CFIX  需要返回雅可比矩阵。
         ddsdde(k,6) = -r*dstre(k)*dstre(6)
         ddsdde(6,k) = ddsdde(k,6)
       end do
+	  
        ddsdde(4,4) = q/2.d0 - r*dstre(4)*dstre(4)
        ddsdde(5,5) = q/2.d0 - r*dstre(5)*dstre(5)
        ddsdde(6,6) = q/2.d0 - r*dstre(6)*dstre(6)
 
        
 c *** OUTPUT
+c     flag, statistically conserved dislocations. See Arsenlis and Parks (1998)
+c     in most cases is eq to 1
+CFIX  学习上述论文。
        kflag=props(6)
        if (kflag.eq.1) then
 c     fcc
 c     arsenlis and parks (1998)
-              xm=3.06d0
-              b=0.2555d-6
-              r=1.9 
+              xm=3.06d0		! Taylor factor. sigma_y=xm*tau_crss. 
+              b=0.2555d-6	! Burgers vector. 
+              r=1.9 	    ! the Nye factor. 
           else
 c     bcc
               xm=2.9d0
@@ -790,25 +816,27 @@ c     bcc
               r=1.9 
        endif
       
-       if (ele.eq.0.d0) then
+       if (ele.eq.0.d0) then	! characteristic length，计算GNDs位错密度。
         gnd=0.d0
        else
-        gnd=r*SVAR(npt,10)/b
-       endif    
+        gnd=r*SVAR(npt,10)/b   ! GNDs位错密度。
+       endif
+	   
        ssd=((syield*(E/syield)**ene*(epseq+syield/E)**ene)/
-     & (xm*0.5*eg*b))**2
-       td=gnd+ssd
+     & (xm*0.5*eg*b))**2	  ! SSDs位错密度。
+       td=gnd+ssd		      ! 总位错密度。
        
        
-c     gradient !CFIX! the average strain gradient. 
+c     gradient !CFIX! the average strain gradient. 保存应变梯度。
        statev(10)= SVAR(npt,10) 
 c     to plot ssd in m^-2 
        statev(11)=(1000000.0d0)*ssd
 c     to plot gnd in m^-2 
 CFIX  why not *10^6?
 CFIX  the unit of eta is 1/mm,
-CFIX  the unit of 
-       statev(12)=(1000.0d0)*gnd
+CFIX  the unit of Burgers vector is 1/mm.
+CFIX  将 1000改为 1000000.
+       statev(12)=(1000000.0d0)*gnd
 c     total dislocations
        statev(13)=td 
   
